@@ -1,27 +1,8 @@
-# Python
 __pycache__/
 *.py[cod]
-*.so
-.Python
+.ipynb_checkpoints/
 .venv/
 venv/
-.env
-
-# Jupyter
-.ipynb_checkpoints/
-
-# Training artifacts and datasets
-data/
-dataset/
-datasets/
-outputs/
-*.h5
-*.keras
-*.npz
-*.npy
-
-# OS / IDE
+validation_output/
 .DS_Store
 Thumbs.db
-.vscode/
-.idea/
