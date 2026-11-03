@@ -1,179 +1,187 @@
-# MH-GU COVID-HRCT Dataset Validation
+# ResNet50V2 for Binary COVID-19 CT Image Classification
 
-A lightweight, reproducible Python quality-control script for the **released TIFF images** of the MH-GU COVID-HRCT dataset.
+A modular TensorFlow/Keras implementation of a ResNet50V2-based binary image-classification workflow for **healthy** and **infected** CT images.
 
-The script checks the dataset directory organization, patient/image counts, TIFF file integrity, image dimensions, pixel-intensity statistics, blank images, and exact duplicate files. It exports machine-readable CSV reports to support transparent dataset documentation and independent verification.
+> **Research-code note:** This repository provides the implementation only. It does not include trained weights, dataset files, or performance claims. No experimental results are reported in this repository.
 
-> **Scope:** This repository validates the TIFF dataset and its folder structure. It does **not** read, parse, or validate DICOM files or DICOM metadata. The `Raw DICOM Files` directory is checked only for its presence as part of the expected top-level organization.
+## Overview
 
-## Contents
+The pipeline is organized into separate stages:
 
-```text
-MH-GU-COVID-HRCT-validation/
-├── validation.py
-├── requirements.txt
-├── README.md
-├── .gitignore
-└── validation_output/          # generated after execution
-    ├── validation_results.csv
-    ├── folder_summary.csv
-    └── tiff_image_metadata.csv
-```
+1. Discover images from class-specific folders.
+2. Create reproducible, stratified training, validation, and test partitions.
+3. Train a ResNet50V2 feature extractor with a global-average-pooling classification head.
+4. Select the checkpoint using validation performance.
+5. Evaluate the selected checkpoint on the held-out test set and save diagnostic artifacts.
 
-## 1. Expected dataset organization
+The default model initialization is `none`, matching the supplied notebook's `weights=None` setting. ImageNet initialization can be enabled explicitly with `--weights imagenet`.
 
-The script expects the following structure. The names of the pattern folders must match the entries in `PATTERNS` in `validation.py` (folder matching ignores spaces and punctuation).
+## Dataset layout
+
+Arrange the dataset as follows:
 
 ```text
-MH-GU-COVID-HRCT/
-├── Raw DICOM Files/
-├── Healthy Cases/
-│   ├── patient_1/
-│   │   ├── image_001.tiff
-│   │   └── ...
-│   ├── patient_2/
+dataset/
+├── Merged_healthy_images/
+│   ├── image_001.png
 │   └── ...
-└── Infected Cases/
-    ├── Minimal GGO/
-    │   ├── patient_1/
-    │   │   ├── image_001.tiff
-    │   │   └── Annotations/
-    │   │       └── ...
-    │   └── ...
-    ├── GGO/
-    ├── Consolidation/
-    ├── GGO with Consolidation/
-    ├── Crazy paving/
-    ├── GGO with CP/
-    └── Halo sign/
+└── Merged_infected_images/
+    ├── image_001.png
+    └── ...
 ```
 
-The example above illustrates the expected organization. Actual filenames and annotation-folder names may differ. The script identifies annotation folders by the presence of `annot` in the folder name.
+Supported image formats: `.jpg`, `.jpeg`, `.png`, `.bmp`, and `.tif`/`.tiff`.
 
-## 2. Validation checks
+The class mapping is deterministic:
 
-### Directory structure
+| Class name | Class index |
+|---|---:|
+| `Merged_healthy_images` | 0 |
+| `Merged_infected_images` | 1 |
 
-- Checks for the three expected top-level directories: `Raw DICOM Files`, `Healthy Cases`, and `Infected Cases`.
-- Checks that healthy patient folders contain TIFF images.
-- Checks that infected cases are organized by pattern and patient.
-- Checks that each infected patient folder has exactly one annotation folder.
-- Checks that annotation folders are not empty.
-- Reports unexpected nested folders and unexpected pattern folders.
+If your folder names differ, update `CLASS_NAMES` in `src/resnet50v2_covid/data.py`.
 
-### Patient and image counts
+### Important split-design consideration
 
-The default expected counts are configured as:
+The supplied notebook performs a random image-level train/test split. This repository uses stratified train/validation/test partitions, but it cannot infer patient identity from image filenames. **If multiple slices or images belong to the same patient, provide patient-level grouping before splitting.** Images from one patient must not occur in more than one partition; otherwise, data leakage may inflate the estimated generalization performance. The current implementation is appropriate only when each image can be treated as an independent sample or when patient-level separation has already been ensured in the folder organization.
 
-| Category | Expected patients | Expected TIFF images |
-|---|---:|---:|
-| Healthy | 82 | 330 |
-| Infected | 106 | 720 |
-| **Total** | **188** | **1,050** |
+## Environment setup
 
-These are configurable in `EXPECTED_COUNTS`. A count mismatch is reported as a warning so that the script does not silently treat a discrepancy as proof of file corruption.
+Python 3.10 or 3.11 is recommended.
 
-### TIFF image integrity
+```bash
+git clone <YOUR_REPOSITORY_URL>
+cd resnet50v2-covid-hrct
 
-For each TIFF image, the script checks or records:
+python -m venv .venv
+```
 
-- Whether the image can be opened and verified.
-- Image width and height.
-- PIL image mode and NumPy data type.
-- Whether the image is grayscale.
-- Minimum and maximum pixel intensity.
-- Mean and standard deviation of pixel intensity.
-- Constant-intensity images (zero standard deviation).
-- Exact byte-identical duplicates (MD5 hash).
+Activate the environment:
 
-Observed intensity values are reported rather than compared with an arbitrary universal threshold. Duplicate and blank-image findings are flagged for review; files are not automatically deleted or modified.
+```bash
+# Windows PowerShell
+.venv\Scripts\Activate.ps1
 
-## 3. Requirements
-
-- Python 3.9 or later
-- NumPy
-- pandas
-- Pillow
+# macOS / Linux
+source .venv/bin/activate
+```
 
 Install dependencies:
 
 ```bash
+python -m pip install --upgrade pip
 pip install -r requirements.txt
+pip install -e .
 ```
 
-## 4. Configuration
+For GPU training, install a TensorFlow build compatible with your CUDA/cuDNN environment. Refer to the official TensorFlow installation documentation for the supported configuration.
 
-Open `validation.py` and edit the dataset path:
-
-```python
-ROOT = Path(r"/path/to/MH-GU-COVID-HRCT")
-```
-
-`ROOT` must point to the directory containing the three top-level folders.
-
-Check the pattern-folder names against the actual dataset. The default list includes `GGO with CP`; if the actual directory is named `GGO with Crazy paving`, update the corresponding entry in `PATTERNS`.
-
-The expected patient and image counts can be changed in `EXPECTED_COUNTS`. Set a value to `None` to skip that count comparison.
-
-If the TIFF images are not all expected to be grayscale or `uint8`, change:
-
-```python
-EXPECT_GRAYSCALE = True
-EXPECT_UINT8 = True
-```
-
-to `False` for the relevant property. These options control whether the script reports deviations from the expected representation; the actual mode and data type are recorded in the output metadata.
-
-## 5. Run the validation
-
-From a terminal in the repository directory:
+## Training
 
 ```bash
-python validation.py
+python -m resnet50v2_covid.train \
+  --data-dir /path/to/dataset \
+  --output-dir outputs/resnet50v2 \
+  --epochs 20 \
+  --batch-size 20 \
+  --image-size 224 \
+  --learning-rate 2e-5 \
+  --weights none
 ```
 
-The script prints validation outcomes to the terminal and creates a `validation_output/` directory containing the reports.
+On Windows, use a path such as `D:\dataset` (quote it if it contains spaces).
 
-## 6. Output files
+The default partition proportions are 70% training, 15% validation, and 15% testing. Set the random seed with `--seed`. The test partition is not used for checkpoint selection.
 
-| File | Description |
-|---|---|
-| `validation_results.csv` | Individual validation checks with `PASS`, `WARN`, `FAIL`, or `INFO` status |
-| `folder_summary.csv` | Patient, image, and annotation-file counts by category/pattern |
-| `tiff_image_metadata.csv` | Per-image readability, dimensions, mode, data type, intensity statistics, and duplicate hash |
+To initialize the backbone with ImageNet weights:
 
-The CSV files are generated from the current dataset when the script is run. They are not pre-populated or assumed results.
+```bash
+python -m resnet50v2_covid.train \
+  --data-dir /path/to/dataset \
+  --output-dir outputs/resnet50v2_imagenet \
+  --weights imagenet
+```
 
-## 7. Interpreting results
+### Training options
 
-- **PASS:** The tested condition was satisfied.
-- **WARN:** A deviation was found that should be reviewed; it may be legitimate depending on the dataset.
-- **FAIL:** A required folder or validation condition was not satisfied.
-- **INFO:** An observed value was recorded without a pass/fail criterion.
+```bash
+python -m resnet50v2_covid.train --help
+```
 
-Review all warnings and failures before reporting validation outcomes in a manuscript or releasing the dataset. The script does not modify, rename, move, or delete source data.
+Key options include:
 
-## 8. Scope and limitations
+- `--data-dir`: dataset root directory.
+- `--output-dir`: directory for checkpoints, logs, and split manifests.
+- `--image-size`: square input size (default: 224).
+- `--batch-size`: mini-batch size (default: 20).
+- `--epochs`: maximum number of epochs (default: 20).
+- `--learning-rate`: Adam learning rate (default: `2e-5`).
+- `--weights`: `none` or `imagenet`.
+- `--seed`: random seed (default: 42).
 
-- The script validates TIFF files and directory organization only.
-- It does not inspect DICOM headers, DICOM pixel data, or DICOM anonymization.
-- An MD5 match identifies byte-identical files; it does not detect visually similar images saved with different encodings.
-- A zero-standard-deviation test detects constant-intensity images, not every possible clinically uninformative image.
-- A grayscale check based on image array dimensions does not establish that an image is diagnostically adequate.
-- A folder-structure check cannot verify the clinical correctness of labels or annotations.
-- The script does not replace clinical review, annotation quality assessment, or a complete privacy assessment.
+## Evaluation
 
-## 9. Reproducibility
+Evaluation is performed separately after training:
 
-For transparent reporting, publish:
+```bash
+python -m resnet50v2_covid.evaluate \
+  --run-dir outputs/resnet50v2
+```
 
-1. This validation script.
-2. The `requirements.txt` file (and, if desired, a pinned environment file).
-3. The generated CSV validation reports, after reviewing them for unintended disclosure of sensitive filenames or identifiers.
-4. The dataset version or release identifier and the date on which validation was run.
+This loads the saved test manifest and best checkpoint, then writes evaluation artifacts to `outputs/resnet50v2/evaluation/`. The test set is evaluated only in this stage.
 
-Do not publish patient-identifying information in the reports. Use anonymized or pseudonymized folder and filename conventions in any public release.
+## Output structure
+
+```text
+outputs/resnet50v2/
+├── best_model.keras
+├── training_history.csv
+├── training_curves.png
+├── class_mapping.json
+├── split_manifest.csv
+└── evaluation/
+    ├── classification_report.json
+    ├── confusion_matrix.csv
+    ├── roc_curve.png
+    └── evaluation_summary.json
+```
+
+These files are generated locally when the pipeline is run. They are not included in the repository.
+
+## Methodological and implementation notes
+
+- **Input preprocessing:** ResNet50V2 expects inputs preprocessed to the range used by `tf.keras.applications.resnet_v2.preprocess_input` (approximately `[-1, 1]`). The pipeline applies this preprocessing consistently.
+- **Augmentation:** Random rotation, translation, zoom, and horizontal/vertical flips are applied to training images only.
+- **Model selection:** `val_loss` is monitored for checkpointing and early stopping. The held-out test set is not used during training.
+- **Reproducibility:** Python, NumPy, and TensorFlow seeds are set. Exact determinism can still depend on hardware and TensorFlow operations.
+- **Patient-level independence:** Confirm that the split unit is the patient, not merely the image, whenever multiple images originate from one patient.
+- **Clinical interpretation:** This is a research implementation, not a clinically validated diagnostic system.
+
+## Repository structure
+
+```text
+.
+├── README.md
+├── LICENSE
+├── CITATION.cff
+├── requirements.txt
+├── pyproject.toml
+├── .gitignore
+├── notebooks/
+│   └── legacy_original_workflow.ipynb
+└── src/
+    └── resnet50v2_covid/
+        ├── __init__.py
+        ├── data.py
+        ├── model.py
+        ├── train.py
+        └── evaluate.py
+```
+
+## Citation
+
+If you use or adapt this code, cite the associated research work once it has been published. A placeholder `CITATION.cff` is included; update it with the final bibliographic details before making the repository public.
 
 ## License
 
-Add the license applicable to the dataset and code before public distribution. The code license and dataset license may be different.
+The code is distributed under the MIT License. Dataset access, redistribution, and use must follow the dataset owners' terms and applicable institutional approvals. The license in this repository does not grant rights to redistribute medical images.
