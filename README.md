@@ -26,7 +26,6 @@ The script expects the following structure. The names of the pattern folders mus
 
 ```text
 MH-GU-COVID-HRCT/
-├── Raw DICOM Files/
 ├── Healthy Cases/
 │   ├── patient_1/
 │   │   ├── image_001.tiff
