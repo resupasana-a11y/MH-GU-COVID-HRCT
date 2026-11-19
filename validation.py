@@ -12,7 +12,6 @@ Checks:
 5. TIFF readability and basic image properties
 6. Image dimensions, pixel-intensity ranges, blank images, and exact duplicates
 
-This script intentionally does NOT inspect DICOM files or DICOM metadata.
 """
 
 from pathlib import Path
@@ -30,11 +29,8 @@ from PIL import Image
 # =============================================================================
 
 # Set this to the directory containing:
-#   Raw DICOM Files/
 #   Healthy Cases/
 #   Infected Cases/
-#
-# Raw DICOM Files is only checked for its presence; its contents are not read.
 ROOT = Path(r"/path/to/MH-GU-COVID-HRCT")
 
 PATTERNS = [
@@ -158,22 +154,18 @@ if not ROOT.is_dir():
         "Edit ROOT in the configuration section before running the script."
     )
 
-raw_dir = locate_unique_folder(ROOT, "Raw DICOM Files")
 healthy_dir = locate_unique_folder(ROOT, "Healthy Cases")
 infected_dir = locate_unique_folder(ROOT, "Infected Cases")
 
-if any(folder is None for folder in (raw_dir, healthy_dir, infected_dir)):
+if any(folder is None for folder in (healthy_dir, infected_dir)):
     raise RuntimeError(
         "One or more required folders could not be located uniquely. "
         "Correct ROOT or resolve duplicate folder names, then rerun."
     )
 
 print("\nResolved dataset folders:")
-print("Raw DICOM Files:", raw_dir)
-print("Healthy Cases:  ", healthy_dir)
-print("Infected Cases: ", infected_dir)
-
-# Note: Raw DICOM Files is not opened or inspected by this script.
+print("Healthy Cases: ", healthy_dir)
+print("Infected Cases:", infected_dir)
 
 
 # =============================================================================
