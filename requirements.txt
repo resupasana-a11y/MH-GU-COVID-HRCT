@@ -1,3 +1,7 @@
+tensorflow>=2.12
 numpy>=1.23
-pandas>=1.5
+scikit-learn>=1.2
+matplotlib>=3.6
 Pillow>=9.0
+scikit-fuzzy
+pandas>=1.5
